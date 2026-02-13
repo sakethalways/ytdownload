@@ -16,7 +16,7 @@ class Settings:
     API_TITLE: str = "YouTube Downloader API"
     API_VERSION: str = "1.0.0"
     
-    # CORS - Allow local network access for development
+    # CORS - Allow Vercel frontend, Render backend, and development
     # For production, restrict to specific domains via environment variable
     def get_allowed_origins(self):
         """Get allowed origins, can be overridden by CORS_ALLOWED_ORIGINS env var"""
@@ -24,8 +24,12 @@ class Settings:
         if env_origins:
             return [origin.strip() for origin in env_origins.split(",")]
         
-        # Default for local development - allow localhost and all local IPs
+        # Default for production and development
         origins = [
+            # Vercel production frontend
+            "https://youtube-downloader-app.vercel.app",
+            # Render backend (itself)
+            "https://ytdownload-1-gpug.onrender.com",
             # Localhost (desktop development)
             "http://localhost:3000",
             "http://localhost:8000",
@@ -36,6 +40,8 @@ class Settings:
             "http://192.168.0.7:8000",
             "http://192.168.1.7:3000",
             "http://192.168.1.7:8000",
+            "http://192.168.0.5:3000",
+            "http://192.168.0.5:8000",
         ]
         
         # Add dynamic local IP if available
