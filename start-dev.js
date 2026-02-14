@@ -52,17 +52,53 @@ function findPython() {
 const pythonCmd = findPython();
 const backendDir = path.join(__dirname, 'python-backend');
 
+// Load environment variables from .env.local
+function loadEnvLocal() {
+  const envPath = path.join(__dirname, '.env.local');
+  const env = { ...process.env };
+  
+  try {
+    if (fs.existsSync(envPath)) {
+      const envContent = fs.readFileSync(envPath, 'utf8');
+      const lines = envContent.split('\n');
+      
+      for (const line of lines) {
+        const trimmed = line.trim();
+        // Skip empty lines and comments
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        
+        const match = trimmed.match(/^([^=]+)=(.*)$/);
+        if (match) {
+          const key = match[1].trim();
+          const value = match[2].trim().replace(/^["']|["']$/g, '');
+          // Only set backend-relevant variables
+          if (key === 'YOUTUBE_API_KEY') {
+            env[key] = value;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('⚠ Could not load .env.local:', err.message);
+  }
+  
+  return env;
+}
+
+const backendEnv = loadEnvLocal();
+
 console.log('\n🚀 Starting YouTube Downloader...\n');
 console.log('📋 Configuration:');
 console.log(`   Frontend: http://localhost:3000`);
 console.log(`   Backend:  http://0.0.0.0:8000`);
-console.log(`   Network:  http://192.168.0.7:3000 (Mobile)\n`);
+console.log(`   Network:  http://192.168.0.7:3000 (Mobile)`);
+console.log(`   YouTube API: ${backendEnv.YOUTUBE_API_KEY ? '✓ Configured' : '⚠ Not found'}\n`);
 
 let frontendReady = false;
 let backendReady = false;
 
-// Start Next.js frontend
-const frontend = spawn('next', ['dev', '--turbo'], {
+// Start Next.js frontend on all interfaces
+const frontend = spawn('next', ['dev', '--turbo', '-H', '0.0.0.0'], {
   stdio: 'inherit',
   shell: true,
   cwd: __dirname,
@@ -70,11 +106,12 @@ const frontend = spawn('next', ['dev', '--turbo'], {
 
 // Add delay before starting backend to prevent port conflicts
 setTimeout(() => {
-  // Start FastAPI backend
+  // Start FastAPI backend with environment variables
   const backend = spawn(pythonCmd, ['-m', 'uvicorn', 'main:app', '--host', '0.0.0.0', '--port', '8000', '--reload'], {
     stdio: ['inherit', 'pipe', 'pipe'],
     shell: isWindows,
     cwd: backendDir,
+    env: backendEnv,
   });
 
   // Capture backend output to detect startup

@@ -86,3 +86,49 @@ class ErrorResponse(BaseModel):
     error: str
     error_code: str
     details: Optional[dict] = None
+
+
+class VideoSearchResult(BaseModel):
+    """Single video result from search"""
+    video_id: str
+    title: str
+    description: str
+    thumbnail: str
+    channel: str
+    published_at: str
+    url: str
+
+
+class SearchRequest(BaseModel):
+    """Request model for searching YouTube"""
+    query: str = Field(..., description="Search query")
+    max_results: int = Field(default=20, ge=1, le=50, description="Maximum results to return")
+    page_token: Optional[str] = Field(default=None, description="Token for pagination")
+
+
+class SearchResponse(BaseModel):
+    """Response model for YouTube search"""
+    success: bool
+    videos: List[VideoSearchResult] = []
+    next_page_token: Optional[str] = None
+    prev_page_token: Optional[str] = None
+    total_results: int = 0
+    error: Optional[str] = None
+    error_code: Optional[str] = None
+
+
+class VideoDetailsResponse(BaseModel):
+    """Response model for video details"""
+    success: bool
+    video_id: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    thumbnail: Optional[str] = None
+    channel: Optional[str] = None
+    published_at: Optional[str] = None
+    duration: Optional[int] = None
+    views: Optional[str] = None
+    likes: Optional[str] = None
+    url: Optional[str] = None
+    error: Optional[str] = None
+    error_code: Optional[str] = None

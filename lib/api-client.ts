@@ -1,9 +1,30 @@
 /**
- * API Base URL from environment variable
- * Development: http://localhost:8000 (FastAPI running locally)
- * Production: Set via NEXT_PUBLIC_API_URL env var (e.g., Vercel deployment)
+ * API Base URL - dynamically determined based on environment
+ * Production: Set via NEXT_PUBLIC_API_URL env var
+ * Development: Uses current hostname to support mobile access (e.g., 192.168.0.5:3000 -> 192.168.0.5:8000)
  */
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+function getApiBaseUrl(): string {
+  // PRIORITY 1: Runtime detection (for mobile/network access like 192.168.0.5:3000 -> 192.168.0.5:8000)
+  // This must be checked FIRST before env vars (which are hardcoded at build time)
+  if (typeof window !== 'undefined') {
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    return `${protocol}//${hostname}:8000`;
+  }
+
+  // PRIORITY 2: Env var (for SSR/build time)
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+
+  // FALLBACK: localhost
+  return 'http://localhost:8000';
+}
+
+// NOTE: Do NOT use a module-level constant here!
+// getApiBaseUrl() must be called dynamically at runtime in components
+// to detect the actual hostname (for mobile access like 192.168.0.5:3000)
 
 export interface Format {
   format_id: string;
@@ -41,7 +62,8 @@ export interface DownloadProgress {
 
 export async function fetchFormats(url: string): Promise<FetchFormatsResponse> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/fetch-formats`, {
+    const apiBaseUrl = getApiBaseUrl();
+    const response = await fetch(`${apiBaseUrl}/api/fetch-formats`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -60,7 +82,8 @@ export async function fetchFormats(url: string): Promise<FetchFormatsResponse> {
     return await response.json();
   } catch (error) {
     if (error instanceof TypeError && error.message === 'Failed to fetch') {
-      throw new Error(`Backend server not running at ${API_BASE_URL}. Make sure to start the FastAPI server.`);
+      const apiBaseUrl = getApiBaseUrl();
+      throw new Error(`Backend server not running at ${apiBaseUrl}. Make sure to start the FastAPI server.`);
     }
     throw error;
   }
@@ -74,7 +97,8 @@ export async function downloadFormat(
   abortSignal?: AbortSignal
 ): Promise<Blob> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/download`, {
+    const apiBaseUrl = getApiBaseUrl();
+    const response = await fetch(`${apiBaseUrl}/api/download`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -112,7 +136,7 @@ export async function downloadFormat(
       }
     }
 
-    return new Blob(chunks, {
+    return new Blob(chunks as BlobPart[], {
       type: outputFormat === 'mp3' ? 'audio/mpeg' : 'video/mp4',
     });
   } catch (error) {
@@ -123,7 +147,8 @@ export async function downloadFormat(
     }
     console.error('[v0] downloadFormat error:', error);
     if (error instanceof TypeError && error.message === 'Failed to fetch') {
-      throw new Error(`Backend server not running at ${API_BASE_URL}. Make sure to start the FastAPI server.`);
+      const apiBaseUrl = getApiBaseUrl();
+      throw new Error(`Backend server not running at ${apiBaseUrl}. Make sure to start the FastAPI server.`);
     }
     throw error;
   }

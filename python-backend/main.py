@@ -9,8 +9,9 @@ from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 
 from config import get_settings
-from schemas import FetchFormatsRequest, FetchFormatsResponse, DownloadRequest, ErrorResponse, FormatInfo
+from schemas import FetchFormatsRequest, FetchFormatsResponse, DownloadRequest, ErrorResponse, FormatInfo, SearchRequest, SearchResponse, VideoDetailsResponse
 from services import YtDlpService, ConverterService
+from services.youtube_search_service import YouTubeSearchService
 from middleware.rate_limiting import rate_limiter
 from utils import sanitize_filename, ensure_temp_dir, extract_video_id, cleanup_temp_files
 
@@ -29,6 +30,14 @@ async def lifespan(app: FastAPI):
     ffmpeg_valid, ffmpeg_msg = await ConverterService.validate_ffmpeg()
     if not ffmpeg_valid:
         logger.warning(f"FFmpeg validation: {ffmpeg_msg}")
+    
+    # Initialize YouTube API
+    youtube_api_key = os.getenv("YOUTUBE_API_KEY")
+    if youtube_api_key:
+        YouTubeSearchService.initialize(youtube_api_key)
+        logger.info("YouTube Search API initialized")
+    else:
+        logger.warning("YOUTUBE_API_KEY not set - YouTube search features will be unavailable")
     
     yield
     
@@ -275,6 +284,103 @@ async def download(request: Request, body: DownloadRequest, background_tasks: Ba
         raise
     except Exception as e:
         logger.error(f"Error in download: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail={"error": f"Server error: {str(e)}", "error_code": "SERVER_ERROR"}
+        )
+
+# YouTube Search APIs
+@app.post("/api/search", response_model=SearchResponse)
+async def search_youtube(request: Request, body: SearchRequest):
+    """
+    Search for YouTube videos using Google API
+    
+    Returns search results with video IDs, titles, thumbnails, and URLs
+    """
+    try:
+        if not YouTubeSearchService.is_initialized():
+            raise HTTPException(
+                status_code=503,
+                detail={"error": "YouTube Search API not available", "error_code": "API_NOT_AVAILABLE"}
+            )
+        
+        logger.info(f"Searching YouTube: {body.query}")
+        
+        success, data = await YouTubeSearchService.search_videos(
+            query=body.query,
+            max_results=body.max_results,
+            page_token=body.page_token
+        )
+        
+        if not success:
+            error_code = data.get("error_code", "SEARCH_ERROR")
+            error_msg = data.get("error", "Search failed")
+            raise HTTPException(
+                status_code=400,
+                detail={"error": error_msg, "error_code": error_code}
+            )
+        
+        return SearchResponse(
+            success=True,
+            videos=data.get('videos', []),
+            next_page_token=data.get('next_page_token'),
+            prev_page_token=data.get('prev_page_token'),
+            total_results=data.get('total_results', 0)
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in search_youtube: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail={"error": f"Server error: {str(e)}", "error_code": "SERVER_ERROR"}
+        )
+
+@app.get("/api/video/{video_id}", response_model=VideoDetailsResponse)
+async def get_video_details(video_id: str):
+    """
+    Get detailed information about a specific YouTube video
+    
+    Returns title, description, thumbnail, duration, view count, etc.
+    """
+    try:
+        if not YouTubeSearchService.is_initialized():
+            raise HTTPException(
+                status_code=503,
+                detail={"error": "YouTube API not available", "error_code": "API_NOT_AVAILABLE"}
+            )
+        
+        logger.info(f"Fetching video details: {video_id}")
+        
+        success, data = await YouTubeSearchService.get_video_details(video_id)
+        
+        if not success:
+            error_code = data.get("error_code", "DETAILS_ERROR")
+            error_msg = data.get("error", "Failed to fetch video details")
+            raise HTTPException(
+                status_code=400,
+                detail={"error": error_msg, "error_code": error_code}
+            )
+        
+        return VideoDetailsResponse(
+            success=True,
+            video_id=data.get('video_id'),
+            title=data.get('title'),
+            description=data.get('description'),
+            thumbnail=data.get('thumbnail'),
+            channel=data.get('channel'),
+            published_at=data.get('published_at'),
+            duration=data.get('duration'),
+            views=data.get('views'),
+            likes=data.get('likes'),
+            url=data.get('url')
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_video_details: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail={"error": f"Server error: {str(e)}", "error_code": "SERVER_ERROR"}

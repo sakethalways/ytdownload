@@ -70,14 +70,30 @@ try {
   // Step 4: Create environment files
   console.log('⚙️  Step 4: Setting up environment files...');
   
+  // Detect the machine's IP address for network access
+  let localIP = '192.168.0.7';
+  const networkInterfaces = os.networkInterfaces();
+  for (const name of Object.keys(networkInterfaces)) {
+    for (const iface of networkInterfaces[name]) {
+      // Skip internal and non-IPv4 addresses
+      if (!iface.internal && iface.family === 'IPv4') {
+        localIP = iface.address;
+        break;
+      }
+    }
+    if (localIP !== '192.168.0.7') break;
+  }
+  
   const envLocalPath = path.join(__dirname, '.env.local');
   const backendEnvPath = path.join(backendDir, '.env');
   
   if (!fs.existsSync(envLocalPath)) {
     fs.writeFileSync(envLocalPath, `# Local Development
-NEXT_PUBLIC_API_URL=http://192.168.0.7:8000
+# Note: The frontend will automatically use the correct IP when accessed from mobile devices
+# This URL is used as fallback for SSR/build time
+NEXT_PUBLIC_API_URL=http://${localIP}:8000
 `);
-    console.log('   Created .env.local');
+    console.log(`   Created .env.local with IP: ${localIP}`);
   }
   
   if (!fs.existsSync(backendEnvPath)) {
